@@ -3,6 +3,7 @@ from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage, AIMessage
 import os
 import json
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,8 +33,6 @@ def serve_image(filename):
 @app.route('/api/characters', methods=['GET'])
 def get_characters():
     return jsonify(CHARACTERS)
-
-import requests
 
 def get_rag_context(topic):
     # Optional: Connect to the RAG server if it's running

@@ -11,9 +11,13 @@ STORAGE_DIR = "storage"
 NEWS_FILE   = os.path.join(STORAGE_DIR, "latest_news.json")
 MODEL       = "qwen2.5:0.5b"
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Telegram Config
-TELEGRAM_TOKEN   = "............."
-TELEGRAM_CHAT_ID = "................"
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # ── RSS Sources ────────────────────────────────────────────────────────────────
 # Add or remove feeds here. Key = display name, value = RSS URL.
