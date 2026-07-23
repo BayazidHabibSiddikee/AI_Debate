@@ -36,12 +36,12 @@ stop_simulator() {
 start_simulator() {
     echo "🏹 Starting Nexus Debate Platform..."
     
-    if [ ! -d "$VENV" ]; then
-        echo "❌ Virtual environment not found at $VENV"
-        exit 1
+    if [ -d "$VENV" ]; then
+        echo "🐍 Activating virtual environment..."
+        source "$VENV/bin/activate"
+    else
+        echo "ℹ️ Virtual environment not found. Falling back to global Python."
     fi
-    
-    source "$VENV/bin/activate"
     
     # Run RAG Server
     echo "📚 Starting RAG Engine..."

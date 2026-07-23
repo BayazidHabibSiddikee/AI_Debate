@@ -45,7 +45,16 @@ If you have the `marin_venv` configured, simply run:
 ./run.sh
 ```
 
-### Option 2: Manual Start
+### Option 2: Docker Compose (Recommended)
+If you have Docker installed, simply run:
+```bash
+docker-compose up --build -d
+```
+The services will be available at:
+* **Debate Hub**: [http://localhost:5050](http://localhost:5050)
+* **RAG Server**: [http://localhost:5080](http://localhost:5080)
+
+### Option 3: Manual Start
 1. **Start the RAG Server** (Optional, provides factual context):
    ```bash
    python rag_server.py --port 5080

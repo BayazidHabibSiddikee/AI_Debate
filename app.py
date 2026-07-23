@@ -11,11 +11,16 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
+# Configure elegant logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(module)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 # Load environment
@@ -129,13 +134,44 @@ async def chat(req: ChatRequest):
             last_idx = -1
         next_char = req.characters[(last_idx + 1) % len(req.characters)]
 
-    char_info = next((c for c in CHARACTERS if c['name'] == next_char), None) or {}
-    system_prompt = char_info.get('system_prompt', f"You are {next_char}, a debater.")
+    char_obj = next((c for c in CHARACTERS if c['name'] == next_char), None) or {"name": next_char, "system_prompt": "You are a debater."}
     
-    rag_context = await get_rag_context(req.topic)
+    rag_context_raw = await get_rag_context(req.topic)
+    rag_context = rag_context_raw[:3000] + ("..." if len(rag_context_raw) > 3000 else "")
 
+    # Read latest news if available
+    news_context = ""
+    news_file = Path("storage/latest_news.json")
+    if news_file.exists():
+        try:
+            with open(news_file, "r") as f:
+                news_data = json.load(f)
+                if news_data:
+                    news_context = "GLOBAL NEWS CONTEXT:\n"
+                    for item in news_data[:3]: # top 3 news items
+                        news_context += f"- {item.get('title')}: {item.get('analysis', '')}\n"
+        except Exception as e:
+            logger.error(f"Failed to load news: {e}")
+
+    # Build System Prompt
     messages = [
-        SystemMessage(content=f"{system_prompt}\n\nYou are participating in a group chat debate.\nCurrent topic: {req.topic}\n{rag_context}\n\nRespond naturally to the ongoing conversation.\nKeep your response concise (1-3 sentences).")
+        SystemMessage(content=f"""
+You are roleplaying as {char_obj['name']}.
+Personality/Bio:
+{char_obj['system_prompt']}
+
+Debate Topic: {req.topic}
+
+{rag_context}
+
+{news_context}
+
+INSTRUCTIONS:
+1. Stay in character AT ALL TIMES.
+2. Respond to the arguments of previous speakers.
+3. If RAG Context or News is provided, use it to support your points.
+4. Keep your response conversational but intellectually rigorous (approx 3-5 sentences).
+""")
     ]
 
     for msg in req.history[-5:]:
@@ -187,8 +223,53 @@ async def chat_page(request: Request):
 async def knowledge_page(request: Request):
     return templates.TemplateResponse("knowledge.html", {"request": request})
 
+@app.get("/news", response_class=HTMLResponse)
+async def news_page(request: Request):
+    return templates.TemplateResponse("news.html", {"request": request})
+
+@app.get("/api/news_data")
+async def get_news_data():
+    news_file = Path("storage/latest_news.json")
+    if news_file.exists():
+        try:
+            with open(news_file, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+from fastapi.responses import FileResponse
+
+@app.get("/api/dataset")
+async def download_dataset():
+    dataset_file = Path("storage/debates_dataset.jsonl")
+    if dataset_file.exists():
+        return FileResponse(dataset_file, media_type='application/jsonl', filename='debates_dataset.jsonl')
+    else:
+        raise HTTPException(status_code=404, detail="Dataset not found. Generate some debate turns first!")
+
 from fastapi import UploadFile, File, Form
 import httpx
+from extract_chunks import sync_characters
+
+@app.post("/api/upload_character")
+async def upload_character(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith('.png'):
+        raise HTTPException(status_code=400, detail="Only PNG files are allowed")
+        
+    file_path = os.path.join("images", file.filename)
+    try:
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+            
+        # Resync characters
+        global CHARACTERS
+        CHARACTERS = sync_characters()
+        return {"status": "success", "message": f"Character {file.filename} added."}
+    except Exception as e:
+        logger.error(f"Failed to upload character: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/upload_knowledge")
 async def upload_knowledge(file: UploadFile = File(...), type: str = Form(...)):
@@ -208,6 +289,18 @@ async def upload_knowledge(file: UploadFile = File(...), type: str = Form(...)):
     except Exception as e:
         logger.error(f"RAG Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rag_report")
+async def rag_report():
+    endpoint = f"{RAG_SERVER_URL}/report"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(endpoint)
+            if response.status_code == 200:
+                return response.json()
+    except Exception as e:
+        logger.error(f"RAG Report fetch failed: {e}")
+    return {"total": 0, "indexed": [], "failed": []}
 
 @app.get("/api/health")
 async def health_check():

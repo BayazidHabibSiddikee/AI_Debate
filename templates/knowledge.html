@@ -157,8 +157,15 @@
         <input type="file" id="fileInput" onchange="handleFileSelect()">
         
         <div class="status" id="statusMessage"></div>
+        
+        <div class="indexed-files-container" style="margin-top: 20px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; border: 1px solid var(--border-light);">
+            <h4 style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.9rem;">📚 Indexed Memory</h4>
+            <div id="ragReport" style="font-size: 0.85rem; max-height: 100px; overflow-y: auto; color: var(--primary);">
+                Loading...
+            </div>
+        </div>
 
-        <button class="btn" style="background: var(--primary); color: #000; border: none; font-size: 1.1rem;" onclick="uploadFile()">
+        <button class="btn" style="background: var(--primary); color: #000; border: none; font-size: 1.1rem; margin-top: 20px;" onclick="uploadFile()">
             <i class="ri-upload-2-fill"></i> Upload & Index
         </button>
         
@@ -202,6 +209,7 @@
                     document.getElementById('statusMessage').innerHTML = `✅ Successfully indexed <b>${selectedFile.name}</b>`;
                     selectedFile = null;
                     document.getElementById('fileName').innerText = "Click to Browse";
+                    fetchRagReport();
                 } else {
                     document.getElementById('statusMessage').innerHTML = `❌ Error: ${result.detail || 'Upload failed'}`;
                 }
@@ -209,6 +217,24 @@
                 document.getElementById('statusMessage').innerHTML = `❌ Network Error: Could not reach server.`;
             }
         }
+        
+        async function fetchRagReport() {
+            try {
+                const res = await fetch('/api/rag_report');
+                const data = await res.json();
+                const reportDiv = document.getElementById('ragReport');
+                if (data.indexed && data.indexed.length > 0) {
+                    reportDiv.innerHTML = data.indexed.map(f => `<div style="padding: 4px 0;"><i class="ri-check-line"></i> ${f}</div>`).join('');
+                } else {
+                    reportDiv.innerHTML = `<span style="color: var(--text-muted);">No documents indexed yet.</span>`;
+                }
+            } catch (e) {
+                document.getElementById('ragReport').innerHTML = "Failed to load report.";
+            }
+        }
+        
+        // Init
+        fetchRagReport();
     </script>
 </body>
 </html>

@@ -506,7 +506,13 @@
         </div>
 
         <div class="control-group">
-            <label><i class="ri-group-line"></i> Participants (Select ≥2)</label>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label><i class="ri-group-line"></i> Participants (Select ≥2)</label>
+                <button class="btn" style="padding: 4px 8px; font-size: 0.8rem; background: var(--primary-dim); color: var(--primary); border: 1px solid var(--primary);" onclick="document.getElementById('charInput').click()">
+                    <i class="ri-upload-2-line"></i> Add Card
+                </button>
+                <input type="file" id="charInput" style="display: none;" accept=".png" onchange="uploadCharacter()">
+            </div>
             <div class="char-grid" id="charContainer">
                 <!-- Dynamically populated -->
             </div>
@@ -792,6 +798,27 @@
         
         // Setup topic change listener
         document.getElementById('topicInput').addEventListener('input', updateHeaderMeta);
+
+        async function uploadCharacter() {
+            const input = document.getElementById('charInput');
+            if (input.files.length > 0) {
+                const formData = new FormData();
+                formData.append("file", input.files[0]);
+                
+                try {
+                    const res = await fetch('/api/upload_character', { method: 'POST', body: formData });
+                    if(res.ok) {
+                        alert("Character uploaded successfully!");
+                        loadCharacters(); // Refresh list
+                    } else {
+                        alert("Failed to upload character.");
+                    }
+                } catch(e) {
+                    console.error(e);
+                    alert("Error uploading character.");
+                }
+            }
+        }
     </script>
 </body>
 </html>

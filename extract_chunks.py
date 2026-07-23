@@ -45,7 +45,7 @@ def create_placeholder_image(path, name):
     img.save(path)
     return path
 
-if __name__ == '__main__':
+def sync_characters():
     cards = []
     if os.path.exists("characters.json"):
         try:
@@ -127,3 +127,7 @@ if __name__ == '__main__':
         json.dump(cards, f, indent=2)
     print(f"\n🎉 Total characters: {len(cards)}")
     print(f"📄 Saved to: characters.json")
+    return cards
+
+if __name__ == '__main__':
+    sync_characters()
