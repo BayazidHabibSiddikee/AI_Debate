@@ -1,5 +1,9 @@
 # AI Debate & Research Platform
 
+## Our Mission
+The core mission of this platform is to **generate high-quality synthetic chat data to train and fine-tune our VRM models** (like Marin). By simulating deep, multi-character debates and conversations, we can map nuanced texts to complex physical animations, and brainstorm better ideas through AI-driven discussion and research.
+
+## Overview
 Welcome to the AI Debate Simulator and Research Platform! This repository serves two main purposes:
 1. **Multi-Agent Simulation**: Generating synthetic conversational datasets by making different LLM personas talk to each other.
 2. **Research & RAG Operations**: Providing tools for PDF downloading, news harvesting, and RAG (Retrieval-Augmented Generation) processing to enhance agent knowledge.
