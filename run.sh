@@ -5,30 +5,36 @@
 #   ./run.sh stop     — stop the simulator
 
 VENV="$HOME/marin_venv"
-PORT=5050
+DEBATE_PORT=5050
+RAG_PORT=5080
 PID_FILE="./simulator.pid"
+RAG_PID_FILE="./rag.pid"
 
 stop_simulator() {
-    echo "🛑 Stopping Debate Simulator..."
+    echo "🛑 Stopping Debate Simulator & RAG..."
+    
     if [ -f "$PID_FILE" ]; then
-        SPID=$(cat "$PID_FILE")
-        if kill -0 "$SPID" 2>/dev/null; then
-            kill "$SPID"
-            echo "   ✓ Process $SPID stopped."
-        fi
+        kill "$(cat "$PID_FILE")" 2>/dev/null
         rm -f "$PID_FILE"
     fi
-
-    # Fallback to kill by port
-    PID=$(ss -tlnp "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
-    if [ -n "$PID" ]; then
-        kill "$PID" 2>/dev/null && echo "   ✓ Killed process $PID on port $PORT."
+    
+    if [ -f "$RAG_PID_FILE" ]; then
+        kill "$(cat "$RAG_PID_FILE")" 2>/dev/null
+        rm -f "$RAG_PID_FILE"
     fi
-    echo "✅ Simulator is offline."
+
+    # Fallback kills
+    for PORT in $DEBATE_PORT $RAG_PORT; do
+        PID=$(ss -tlnp "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1)
+        if [ -n "$PID" ]; then
+            kill "$PID" 2>/dev/null && echo "   ✓ Killed process $PID on port $PORT."
+        fi
+    done
+    echo "✅ Platform is offline."
 }
 
 start_simulator() {
-    echo "🏹 Starting Debate Simulator using Marin's venv..."
+    echo "🏹 Starting Nexus Debate Platform..."
     
     if [ ! -d "$VENV" ]; then
         echo "❌ Virtual environment not found at $VENV"
@@ -37,23 +43,29 @@ start_simulator() {
     
     source "$VENV/bin/activate"
     
-    # Run the app in background
-    nohup python3 app.py > simulator.log 2>&1 &
-    PID=$!
-    echo $PID > "$PID_FILE"
+    # Run RAG Server
+    echo "📚 Starting RAG Engine..."
+    nohup python3 rag_server.py --port $RAG_PORT > rag.log 2>&1 &
+    echo $! > "$RAG_PID_FILE"
     
-    echo "⏳ Waiting for service to start..."
-    for i in $(seq 1 10); do
-        if ss -tlnp 2>/dev/null | grep -q ":$PORT"; then
-            echo "✨ Debate Simulator is online!"
-            echo "🌍 Portal: http://localhost:$PORT"
+    # Run Debate App
+    echo "💬 Starting Debate App..."
+    nohup python3 app.py > simulator.log 2>&1 &
+    echo $! > "$PID_FILE"
+    
+    echo "⏳ Waiting for services to ascend..."
+    for i in $(seq 1 15); do
+        if ss -tlnp 2>/dev/null | grep -q ":$DEBATE_PORT"; then
+            echo "✨ Nexus Debate Platform is online!"
+            echo "🌍 Portal:        http://localhost:$DEBATE_PORT"
+            echo "📚 RAG Endpoint:  http://localhost:$RAG_PORT"
             echo "------------------------------------------------"
             echo "Run './run.sh stop' to shut it down."
             exit 0
         fi
         sleep 1
     done
-    echo "⚠️  App took longer than expected or failed to start. Check simulator.log"
+    echo "⚠️  App took longer than expected. Check simulator.log and rag.log"
 }
 
 case "${1:-start}" in

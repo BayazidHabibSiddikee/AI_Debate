@@ -159,12 +159,8 @@ async def main():
     print(f"\nSaved {len(analyzed_news)} items to {NEWS_FILE}")
 
     try:
-        import sys
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from database import init_db, save_news
-        init_db()
-        save_news(analyzed_news)
-        print(f"Saved {len(analyzed_news)} items to database.")
+        # Save to local db removed as database.py is obsolete
+        print(f"Skipping SQLite save (database.py deprecated).")
     except Exception as e:
         print(f"DB save failed: {e}")
 

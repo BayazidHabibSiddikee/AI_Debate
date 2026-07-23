@@ -183,6 +183,32 @@ async def index(request: Request):
 async def chat_page(request: Request):
     return templates.TemplateResponse("chat.html", {"request": request})
 
+@app.get("/knowledge", response_class=HTMLResponse)
+async def knowledge_page(request: Request):
+    return templates.TemplateResponse("knowledge.html", {"request": request})
+
+from fastapi import UploadFile, File, Form
+import httpx
+
+@app.post("/api/upload_knowledge")
+async def upload_knowledge(file: UploadFile = File(...), type: str = Form(...)):
+    if type not in ["doc", "code"]:
+        raise HTTPException(status_code=400, detail="Invalid type")
+    
+    endpoint = f"{RAG_SERVER_URL}/upload/{type}"
+    try:
+        content = await file.read()
+        files = {'file': (file.filename, content, file.content_type)}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(endpoint, files=files)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                raise HTTPException(status_code=response.status_code, detail=response.text)
+    except Exception as e:
+        logger.error(f"RAG Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/health")
 async def health_check():
     return {
