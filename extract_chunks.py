@@ -47,6 +47,15 @@ def create_placeholder_image(path, name):
 
 if __name__ == '__main__':
     cards = []
+    if os.path.exists("characters.json"):
+        try:
+            with open("characters.json", "r") as f:
+                cards = json.load(f)
+        except Exception:
+            pass
+            
+    existing_ids = {c["id"] for c in cards}
+    
     images_dir = "images"
     os.makedirs(images_dir, exist_ok=True)
 
@@ -69,13 +78,18 @@ if __name__ == '__main__':
                            chara_json.get('personality', 
                            f"Character from {file}")))
 
-                        cards.append({
-                            "id": name.replace(' ', '_').replace('.', '_'),
-                            "name": name,
-                            "image": path,
-                            "system_prompt": sys_prompt
-                        })
-                        print(f"✅ Extracted: {name}")
+                        char_id = name.replace(' ', '_').replace('.', '_')
+                        if char_id not in existing_ids:
+                            cards.append({
+                                "id": char_id,
+                                "name": name,
+                                "image": path,
+                                "system_prompt": sys_prompt
+                            })
+                            existing_ids.add(char_id)
+                            print(f"✅ Extracted: {name}")
+                        else:
+                            print(f"⏩ Skipped (already exists): {name}")
                         character_added = True
                     except Exception as e:
                         print(f"⚠️ Error parsing chara in {file}: {e}")
@@ -83,13 +97,16 @@ if __name__ == '__main__':
             if not character_added:
                 # Add as fallback character
                 name = file.replace('.png', '').replace('_', ' ')
-                cards.append({
-                    "id": file.replace('.png', '').replace(' ', '_'),
-                    "name": name,
-                    "image": path,
-                    "system_prompt": f"Character from {file}. Persona metadata not found."
-                })
-                print(f"ℹ️ Added fallback: {name}")
+                char_id = file.replace('.png', '').replace(' ', '_')
+                if char_id not in existing_ids:
+                    cards.append({
+                        "id": char_id,
+                        "name": name,
+                        "image": path,
+                        "system_prompt": f"Character from {file}. Persona metadata not found."
+                    })
+                    existing_ids.add(char_id)
+                    print(f"ℹ️ Added fallback: {name}")
 
     # Ensure Marin exists (create placeholder if needed)
     marin_path = os.path.join(images_dir, "default_marin.png")
