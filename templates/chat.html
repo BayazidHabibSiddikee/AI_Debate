@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Character Debate Simulator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #0b0f19;
+            --bg-surface: #111827;
+            --bg-surface-hi: #1f2937;
+            --primary: #00f0ff;
+            --primary-dim: rgba(0, 240, 255, 0.2);
+            --accent-pink: #ff007f;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-radius: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar config */
+        .sidebar {
+            width: 380px;
+            background-color: var(--bg-surface);
+            border-right: 1px solid var(--bg-surface-hi);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 10;
+            overflow-y: auto;
+        }
+
+        .sidebar h1 {
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(90deg, var(--primary), var(--accent-pink));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="text"] {
+            background: var(--bg-deep);
+            border: 1px solid var(--bg-surface-hi);
+            color: var(--text-main);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary-dim);
+        }
+
+        /* Checkbox styling */
+        .char-checkboxes {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .char-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--bg-deep);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--bg-surface-hi);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .char-box:hover {
+            border-color: var(--primary);
+        }
+
+        .char-box img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid var(--bg-surface-hi);
+        }
+
+        .char-box span {
+            font-weight: 600;
+            font-size: 0.95rem;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--primary), #0077ff);
+            color: #000;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 240, 255, 0.5);
+        }
+        
+        .btn:disabled {
+            background: var(--bg-surface-hi);
+            color: var(--text-muted);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Chat Window */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 40px;
+            position: relative;
+            background: radial-gradient(circle at center, var(--bg-surface) 0%, var(--bg-deep) 100%);
+        }
+
+        .chat-log {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            padding-right: 16px;
+        }
+
+        .chat-log::-webkit-scrollbar { width: 6px; }
+        .chat-log::-webkit-scrollbar-track { background: transparent; }
+        .chat-log::-webkit-scrollbar-thumb { background: var(--bg-surface-hi); border-radius: 10px; }
+
+        .message {
+            display: flex;
+            gap: 16px;
+            animation: fadeIn 0.4s ease-out forwards;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--bg-surface-hi);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.2rem;
+            border: 2px solid var(--primary);
+            flex-shrink: 0;
+            object-fit: cover;
+        }
+
+        .msg-content {
+            background: var(--bg-surface);
+            padding: 16px 20px;
+            border-radius: 0 16px 16px 16px;
+            border: 1px solid var(--bg-surface-hi);
+            max-width: 80%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            position: relative;
+        }
+
+        .msg-speaker {
+            font-size: 0.8rem;
+            color: var(--primary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .msg-text {
+            font-size: 1.05rem;
+            line-height: 1.5;
+        }
+
+        /* Loader */
+        .typing {
+            display: none;
+            gap: 6px;
+            padding: 16px;
+            align-items: center;
+        }
+        .typing.active { display: flex; }
+        .dot {
+            width: 8px; height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+    </style>
+</head>
+<body>
+
+    <!-- Sidebar Configuration -->
+    <div class="sidebar">
+        <h1>AI Debate Simulator</h1>
+        
+        <div class="control-group">
+            <label>Topic of Discussion</label>
+            <input type="text" id="topicInput" value="Dancing and Music">
+        </div>
+
+        <div class="control-group">
+            <label>Select Characters (Min 2)</label>
+            <div class="char-checkboxes" id="charContainer">
+                <!-- Dynamically populated from backend -->
+            </div>
+        </div>
+
+        <button class="btn" id="startBtn" onclick="startDebate()">Generate Next Turn</button>
+        <button class="btn" onclick="clearChat()" style="background: var(--bg-surface-hi); color: white; box-shadow: none; margin-top: 10px;">Reset Chat</button>
+    </div>
+
+    <!-- Chat Interface -->
+    <div class="chat-container">
+        <div class="chat-log" id="chatLog">
+            <!-- Messages go here -->
+        </div>
+        
+        <div class="typing" id="typingIndicator">
+            <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+    </div>
+
+    <script>
+        let chatHistory = [];
+        let globalCharacters = [];
+
+        async function loadCharacters() {
+            const res = await fetch('/api/characters');
+            globalCharacters = await res.json();
+            
+            const container = document.getElementById('charContainer');
+            container.innerHTML = '';
+            
+            globalCharacters.forEach((char, idx) => {
+                const isChecked = (char.name === 'Marin' || idx === 0) ? 'checked' : '';
+                const fallbackImg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="%231f2937"/></svg>';
+                const imgSrc = char.image ? `/${char.image}` : fallbackImg;
+                
+                const html = `
+                <label class="char-box">
+                    <input type="checkbox" value="${char.name}" ${isChecked}>
+                    <img src="${imgSrc}" onerror="this.src='${fallbackImg}'">
+                    <span>${char.name}</span>
+                </label>
+                `;
+                container.innerHTML += html;
+            });
+        }
+
+        function getSelectedCharacters() {
+            const checkboxes = document.querySelectorAll('.char-checkboxes input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        function clearChat() {
+            chatHistory = [];
+            document.getElementById('chatLog').innerHTML = '';
+        }
+
+        async function startDebate() {
+            const topic = document.getElementById('topicInput').value;
+            const characters = getSelectedCharacters();
+            
+            if (characters.length < 2) {
+                alert("Please select at least 2 characters.");
+                return;
+            }
+
+            const btn = document.getElementById('startBtn');
+            const typing = document.getElementById('typingIndicator');
+            const chatLog = document.getElementById('chatLog');
+
+            btn.disabled = true;
+            btn.innerText = "Generating...";
+            typing.classList.add('active');
+            chatLog.scrollTop = chatLog.scrollHeight;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        topic: topic,
+                        characters: characters,
+                        history: chatHistory
+                    })
+                });
+
+                const data = await response.json();
+                
+                // Save to history
+                chatHistory.push({ speaker: data.speaker, text: data.text });
+                
+                // Render message
+                appendMessage(data.speaker, data.text);
+
+            } catch (error) {
+                console.error("Error:", error);
+                appendMessage("System", "Failed to connect to LLM endpoint.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Generate Next Turn";
+                typing.classList.remove('active');
+            }
+        }
+
+        function appendMessage(speaker, text) {
+            const chatLog = document.getElementById('chatLog');
+            
+            // Find character image
+            const charObj = globalCharacters.find(c => c.name === speaker);
+            const fallbackImg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><rect width="50" height="50" fill="%231f2937"/></svg>';
+            let imgSrc = fallbackImg;
+            if (charObj && charObj.image) {
+                imgSrc = `/${charObj.image}`;
+            }
+            
+            const msgHTML = `
+                <div class="message">
+                    <img src="${imgSrc}" class="avatar" onerror="this.src='${fallbackImg}'">
+                    <div class="msg-content">
+                        <div class="msg-speaker" style="color: var(--primary);">${speaker}</div>
+                        <div class="msg-text">${text}</div>
+                    </div>
+                </div>
+            `;
+            chatLog.innerHTML += msgHTML;
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        // Initialize
+        loadCharacters();
+    </script>
+</body>
+</html>

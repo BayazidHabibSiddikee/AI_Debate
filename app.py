@@ -51,6 +51,10 @@ def generate_debate_turn(history, character_name, topic):
 def index():
     return render_template('index.html')
 
+@app.route('/chat')
+def chat_page():
+    return render_template('chat.html')
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.json
