@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -213,19 +213,19 @@ INSTRUCTIONS:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html")
 
 @app.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request):
-    return templates.TemplateResponse("chat.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="chat.html")
 
 @app.get("/knowledge", response_class=HTMLResponse)
 async def knowledge_page(request: Request):
-    return templates.TemplateResponse("knowledge.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="knowledge.html")
 
 @app.get("/news", response_class=HTMLResponse)
 async def news_page(request: Request):
-    return templates.TemplateResponse("news.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="news.html")
 
 @app.get("/api/news_data")
 async def get_news_data():
