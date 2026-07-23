@@ -1,29 +1,34 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory, Response
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from typing import List, Dict, Any
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 import os
 import json
 import logging
 import uuid
 from datetime import datetime
-import requests
+import httpx
+from dotenv import load_dotenv
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment
-from dotenv import load_dotenv
 load_dotenv()
 
-app = Flask(__name__)
+app = FastAPI(title="AI Debate Simulator")
 
 # Configuration from environment
 OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:11434/v1")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "not-needed")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3")
 RAG_SERVER_URL = os.getenv("RAG_SERVER_URL", "http://localhost:5080")
-FLASK_DEBUG = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
+DEBUG_MODE = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
 
 # Initialize LLM with error handling
 try:
@@ -44,135 +49,116 @@ os.makedirs("images", exist_ok=True)
 
 # Dataset file
 DATASET_FILE = "storage/debates_dataset.jsonl"
-CONVERSATION_ID = str(uuid.uuid4())  # Unique ID for each session
+CONVERSATION_ID = str(uuid.uuid4())
 
-# Load characters with error handling
+# Load characters
 CHARACTERS = []
 CHARACTERS_FILE = 'characters.json'
 
-try:
-    if os.path.exists(CHARACTERS_FILE):
-        with open(CHARACTERS_FILE, 'r') as f:
-            CHARACTERS = json.load(f)
-        logger.info(f"Loaded {len(CHARACTERS)} characters from {CHARACTERS_FILE}")
-    else:
-        logger.warning(f"{CHARACTERS_FILE} not found. Run: python extract_chunks.py")
-        # Create empty file
-        with open(CHARACTERS_FILE, 'w') as f:
-            json.dump([], f)
-except Exception as e:
-    logger.error(f"Failed to load characters: {e}")
+def load_characters():
+    global CHARACTERS
+    try:
+        if os.path.exists(CHARACTERS_FILE):
+            with open(CHARACTERS_FILE, 'r') as f:
+                CHARACTERS = json.load(f)
+            logger.info(f"Loaded {len(CHARACTERS)} characters")
+        else:
+            with open(CHARACTERS_FILE, 'w') as f:
+                json.dump([], f)
+    except Exception as e:
+        logger.error(f"Failed to load characters: {e}")
+
+load_characters()
+
+# Mount templates and static files
+templates = Jinja2Templates(directory="templates")
 
 # Serve images with fallback
-@app.route('/images/<path:filename>')
-def serve_image(filename):
-    try:
-        if os.path.exists(os.path.join('images', filename)):
-            return send_from_directory('images', filename)
-        raise FileNotFoundError
-    except FileNotFoundError:
-        logger.warning(f"Image not found: {filename}")
-        # Return placeholder SVG
-        svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
-            <rect width="100" height="100" fill="#1f2937" rx="50"/>
-            <text x="50" y="55" text-anchor="middle" fill="white" font-size="20">?</text>
-        </svg>'''
-        return Response(svg, mimetype='image/svg+xml')
+@app.get("/images/{filename}")
+async def serve_image(filename: str):
+    file_path = os.path.join("images", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    
+    # Return placeholder SVG if missing
+    logger.warning(f"Image not found: {filename}")
+    svg = '''<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+        <rect width="100" height="100" fill="#1f2937" rx="50"/>
+        <text x="50" y="55" text-anchor="middle" fill="white" font-size="20">?</text>
+    </svg>'''
+    return Response(content=svg, media_type='image/svg+xml')
 
-@app.route('/api/characters', methods=['GET'])
-def get_characters():
-    return jsonify(CHARACTERS)
+@app.get("/api/characters")
+async def get_characters():
+    return JSONResponse(content=CHARACTERS)
 
-def get_rag_context(topic):
-    """Fetch context from RAG server if available."""
+async def get_rag_context(topic: str) -> str:
+    """Fetch context from RAG server asynchronously."""
     try:
-        response = requests.post(
-            f"{RAG_SERVER_URL}/search",
-            json={"query": topic, "k": 5},
-            timeout=2
-        )
-        if response.status_code == 200:
-            results = response.json().get("results", [])
-            context = "\n".join([r.get("content", "")[:500] for r in results[:3]])
-            return f"\n\nRelevant Background Knowledge:\n{context}"
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.post(
+                f"{RAG_SERVER_URL}/context",
+                json={"query": topic, "k": 5}
+            )
+            if response.status_code == 200:
+                results = response.json().get("results", [])
+                context = "\n".join([r.get("content", "")[:500] for r in results[:3]])
+                return f"\n\nRelevant Background Knowledge:\n{context}"
     except Exception as e:
         logger.debug(f"RAG server unavailable: {e}")
     return ""
 
-def generate_debate_turn(history, character_name, topic):
-    # Find the character's system prompt
-    char_info = next((c for c in CHARACTERS if c['name'] == character_name), None)
-    if char_info:
-        system_prompt = char_info.get('system_prompt', f"You are {character_name}.")
-    else:
-        system_prompt = f"You are {character_name}, a debater."
-        logger.warning(f"Character '{character_name}' not found in {CHARACTERS_FILE}")
+class ChatRequest(BaseModel):
+    topic: str = "General Discussion"
+    characters: List[str] = []
+    history: List[Dict[str, Any]] = []
 
-    # Get RAG context
-    rag_context = get_rag_context(topic)
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    if not req.characters:
+        raise HTTPException(status_code=400, detail="No characters selected. Choose at least 2.")
+
+    # Determine whose turn it is
+    if not req.history:
+        next_char = req.characters[0]
+    else:
+        last_speaker = req.history[-1].get('speaker', '')
+        try:
+            last_idx = req.characters.index(last_speaker)
+        except ValueError:
+            last_idx = -1
+        next_char = req.characters[(last_idx + 1) % len(req.characters)]
+
+    char_info = next((c for c in CHARACTERS if c['name'] == next_char), None) or {}
+    system_prompt = char_info.get('system_prompt', f"You are {next_char}, a debater.")
+    
+    rag_context = await get_rag_context(req.topic)
 
     messages = [
-        SystemMessage(content=f"""{system_prompt}
-
-You are participating in a group chat debate.
-Current topic: {topic}
-{rag_context}
-
-Respond naturally to the ongoing conversation.
-Keep your response concise (1-3 sentences).""")
+        SystemMessage(content=f"{system_prompt}\n\nYou are participating in a group chat debate.\nCurrent topic: {req.topic}\n{rag_context}\n\nRespond naturally to the ongoing conversation.\nKeep your response concise (1-3 sentences).")
     ]
 
-    # Add recent history (last 5 turns)
-    for msg in history[-5:]:
-        if msg['speaker'] == character_name:
-            messages.append(AIMessage(content=msg['text']))
+    for msg in req.history[-5:]:
+        speaker = msg.get('speaker', 'Unknown')
+        text = msg.get('text', '')
+        if speaker == next_char:
+            messages.append(AIMessage(content=text))
         else:
-            messages.append(HumanMessage(content=f"[{msg['speaker']}]: {msg['text']}"))
+            messages.append(HumanMessage(content=f"[{speaker}]: {text}"))
 
-    # Prompt the LLM
     try:
-        response = llm.invoke(messages)
-        return response.content
+        # Use sync invoke inside an executor to not block if it's heavy, or just await it if using async llm client.
+        response = await llm.ainvoke(messages)
+        reply_text = response.content
     except Exception as e:
         logger.error(f"LLM invocation failed: {e}")
-        return f"[Error: Could not generate response - {str(e)}]"
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/chat')
-def chat_page():
-    return render_template('chat.html')
-
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    data = request.json
-    topic = data.get('topic', 'General Discussion')
-    characters = data.get('characters', [])
-    history = data.get('history', [])
-
-    if not characters:
-        return jsonify({"error": "No characters selected. Choose at least 2."}), 400
-
-    # Determine whose turn it is (round-robin)
-    if not history:
-        next_char = characters[0]
-    else:
-        last_speaker = history[-1]['speaker']
-        last_idx = characters.index(last_speaker) if last_speaker in characters else -1
-        next_char = characters[(last_idx + 1) % len(characters)]
-
-    # Find character info for export
-    char_info = next((c for c in CHARACTERS if c['name'] == next_char), None) or {}
-
-    reply_text = generate_debate_turn(history, next_char, topic)
+        reply_text = f"[Error: Could not generate response - {str(e)}]"
 
     # Export to dataset
     try:
         turn_data = {
             "conversation_id": CONVERSATION_ID,
-            "topic": topic,
+            "topic": req.topic,
             "speaker": next_char,
             "text": reply_text,
             "timestamp": datetime.now().isoformat(),
@@ -183,23 +169,31 @@ def chat():
     except Exception as e:
         logger.error(f"Failed to export turn: {e}")
 
-    return jsonify({
+    return {
         "speaker": next_char,
         "text": reply_text,
         "conversation_id": CONVERSATION_ID
-    })
+    }
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    return jsonify({
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page(request: Request):
+    return templates.TemplateResponse("chat.html", {"request": request})
+
+@app.get("/api/health")
+async def health_check():
+    return {
         "status": "operational",
         "characters_loaded": len(CHARACTERS),
         "dataset_path": DATASET_FILE,
         "dataset_exists": os.path.exists(DATASET_FILE)
-    })
+    }
 
 if __name__ == '__main__':
-    logger.info(f"Starting Debate Simulator on port 5050")
+    import uvicorn
+    logger.info(f"Starting FastAPI Debate Simulator on port 5050")
     logger.info(f"LLM: {LLM_MODEL} at {OPENAI_API_BASE}")
-    logger.info(f"RAG Server: {RAG_SERVER_URL}")
-    app.run(debug=FLASK_DEBUG, port=5050)
+    uvicorn.run("app:app", host="0.0.0.0", port=5050, reload=DEBUG_MODE)
