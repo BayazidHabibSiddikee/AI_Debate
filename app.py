@@ -1,28 +1,41 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage, AIMessage
 import os
+import json
 
 app = Flask(__name__)
 
-# Replace with any free OpenAI-compatible API (e.g. Groq, Together, or Local LM Studio)
-os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1" # Example local free endpoint
-os.environ["OPENAI_API_KEY"] = "not-needed" # Or put free API key here
+# Replace with any free OpenAI-compatible API
+os.environ["OPENAI_API_BASE"] = "http://localhost:1234/v1"
+os.environ["OPENAI_API_KEY"] = "not-needed"
 
 llm = ChatOpenAI(model="local-model", temperature=0.7)
 
-# Pre-defined character personas
-PERSONAS = {
-    "Marin": "You are Marin, a sharp, tech-savvy AI character with dry humor.",
-    "Bayazid": "You are Bayazid, a logical and ambitious engineer.",
-    "Genny": "You are Genny, an overly enthusiastic and creative artist.",
-    "Zane": "You are Zane, a laid-back gamer who loves discussing strategies."
-}
+# Load characters from extracted JSON
+CHARACTERS = []
+if os.path.exists('characters.json'):
+    with open('characters.json', 'r') as f:
+        CHARACTERS = json.load(f)
+
+# Serve the images from the images directory
+@app.route('/images/<path:filename>')
+def serve_image(filename):
+    return send_from_directory('images', filename)
+
+@app.route('/api/characters', methods=['GET'])
+def get_characters():
+    return jsonify(CHARACTERS)
 
 def generate_debate_turn(history, character_name, topic):
+    # Find the character's system prompt
+    char_info = next((c for c in CHARACTERS if c['name'] == character_name), None)
+    system_prompt = char_info['system_prompt'] if char_info else "You are a debater."
+    
     messages = [
-        SystemMessage(content=f"{PERSONAS[character_name]}\nYou are participating in a group chat. The current topic is: {topic}. Respond naturally to the ongoing conversation. Keep your response under 3 sentences.")
+        SystemMessage(content=f"{system_prompt}\nYou are participating in a group chat debate. The current topic is: {topic}. Respond naturally to the ongoing conversation. Keep your response under 3 sentences.")
     ]
+    
     # Add recent history
     for msg in history[-5:]:
         if msg['speaker'] == character_name:
@@ -42,9 +55,12 @@ def index():
 def chat():
     data = request.json
     topic = data.get('topic', 'Dancing and Music')
-    characters = data.get('characters', ['Marin', 'Bayazid'])
+    characters = data.get('characters', [])
     history = data.get('history', [])
     
+    if not characters:
+        return jsonify({"error": "No characters selected."}), 400
+        
     # Determine whose turn it is
     if not history:
         next_char = characters[0]

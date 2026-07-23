@@ -35,7 +35,7 @@
 
         /* Sidebar config */
         .sidebar {
-            width: 320px;
+            width: 380px;
             background-color: var(--bg-surface);
             border-right: 1px solid var(--bg-surface-hi);
             padding: 24px;
@@ -43,6 +43,7 @@
             flex-direction: column;
             gap: 20px;
             z-index: 10;
+            overflow-y: auto;
         }
 
         .sidebar h1 {
@@ -67,7 +68,7 @@
             letter-spacing: 1px;
         }
 
-        input[type="text"], select {
+        input[type="text"] {
             background: var(--bg-deep);
             border: 1px solid var(--bg-surface-hi);
             color: var(--text-main);
@@ -78,7 +79,7 @@
             transition: border 0.3s ease;
         }
 
-        input[type="text"]:focus, select:focus {
+        input[type="text"]:focus {
             border-color: var(--primary);
             box-shadow: 0 0 10px var(--primary-dim);
         }
@@ -86,14 +87,14 @@
         /* Checkbox styling */
         .char-checkboxes {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr;
             gap: 10px;
         }
 
         .char-box {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
             background: var(--bg-deep);
             padding: 10px;
             border-radius: 8px;
@@ -106,6 +107,23 @@
             border-color: var(--primary);
         }
 
+        .char-box img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid var(--bg-surface-hi);
+        }
+
+        .char-box span {
+            font-weight: 600;
+            font-size: 0.95rem;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .btn {
             background: linear-gradient(135deg, var(--primary), #0077ff);
             color: #000;
@@ -116,7 +134,7 @@
             font-size: 1rem;
             cursor: pointer;
             transition: all 0.3s;
-            margin-top: auto;
+            margin-top: 20px;
             text-align: center;
             box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3);
         }
@@ -169,7 +187,6 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Profile placeholders (To be replaced with GennyAI images) */
         .avatar {
             width: 50px;
             height: 50px;
@@ -209,12 +226,6 @@
             line-height: 1.5;
         }
 
-        /* Dynamic styles for different characters */
-        .msg-content.marin { border-color: var(--primary); }
-        .msg-content.bayazid { border-color: #00ff88; }
-        .msg-content.genny { border-color: var(--accent-pink); }
-        .msg-content.zane { border-color: #ffaa00; }
-
         /* Loader */
         .typing {
             display: none;
@@ -247,12 +258,9 @@
         </div>
 
         <div class="control-group">
-            <label>Select Characters (2-4)</label>
-            <div class="char-checkboxes">
-                <label class="char-box"><input type="checkbox" value="Marin" checked> Marin</label>
-                <label class="char-box"><input type="checkbox" value="Bayazid" checked> Bayazid</label>
-                <label class="char-box"><input type="checkbox" value="Genny"> Genny</label>
-                <label class="char-box"><input type="checkbox" value="Zane"> Zane</label>
+            <label>Select Characters (Min 2)</label>
+            <div class="char-checkboxes" id="charContainer">
+                <!-- Dynamically populated from backend -->
             </div>
         </div>
 
@@ -273,6 +281,30 @@
 
     <script>
         let chatHistory = [];
+        let globalCharacters = [];
+
+        async function loadCharacters() {
+            const res = await fetch('/api/characters');
+            globalCharacters = await res.json();
+            
+            const container = document.getElementById('charContainer');
+            container.innerHTML = '';
+            
+            globalCharacters.forEach((char, idx) => {
+                const isChecked = (char.name === 'Marin' || idx === 0) ? 'checked' : '';
+                const fallbackImg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="%231f2937"/></svg>';
+                const imgSrc = char.image ? `/${char.image}` : fallbackImg;
+                
+                const html = `
+                <label class="char-box">
+                    <input type="checkbox" value="${char.name}" ${isChecked}>
+                    <img src="${imgSrc}" onerror="this.src='${fallbackImg}'">
+                    <span>${char.name}</span>
+                </label>
+                `;
+                container.innerHTML += html;
+            });
+        }
 
         function getSelectedCharacters() {
             const checkboxes = document.querySelectorAll('.char-checkboxes input[type="checkbox"]:checked');
@@ -333,16 +365,20 @@
 
         function appendMessage(speaker, text) {
             const chatLog = document.getElementById('chatLog');
-            const cls = speaker.toLowerCase();
             
-            // You can replace the innerHTML of avatar with actual <img> tags from gannyAI later
-            const initial = speaker.charAt(0);
+            // Find character image
+            const charObj = globalCharacters.find(c => c.name === speaker);
+            const fallbackImg = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50"><rect width="50" height="50" fill="%231f2937"/></svg>';
+            let imgSrc = fallbackImg;
+            if (charObj && charObj.image) {
+                imgSrc = `/${charObj.image}`;
+            }
             
             const msgHTML = `
                 <div class="message">
-                    <div class="avatar">${initial}</div>
-                    <div class="msg-content ${cls}">
-                        <div class="msg-speaker">${speaker}</div>
+                    <img src="${imgSrc}" class="avatar" onerror="this.src='${fallbackImg}'">
+                    <div class="msg-content">
+                        <div class="msg-speaker" style="color: var(--primary);">${speaker}</div>
                         <div class="msg-text">${text}</div>
                     </div>
                 </div>
@@ -350,6 +386,9 @@
             chatLog.innerHTML += msgHTML;
             chatLog.scrollTop = chatLog.scrollHeight;
         }
+
+        // Initialize
+        loadCharacters();
     </script>
 </body>
 </html>
