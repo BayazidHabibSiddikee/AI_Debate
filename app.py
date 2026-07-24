@@ -117,25 +117,39 @@ class ChatRequest(BaseModel):
     topic: str = "General Discussion"
     characters: List[str] = []
     history: List[Dict[str, Any]] = []
+    user_name: str = "User"
+    mode: str = "random"
+    forced_speaker: str = None
+    is_personal: bool = False
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     if not req.characters:
-        raise HTTPException(status_code=400, detail="No characters selected. Choose at least 2.")
+        raise HTTPException(status_code=400, detail="No characters selected. Choose at least 1.")
 
-    # Determine whose turn it is
-    if not req.history:
+    if req.forced_speaker and req.forced_speaker in req.characters:
+        next_char = req.forced_speaker
+    elif not req.history:
         next_char = req.characters[0]
     else:
-        last_speaker = req.history[-1].get('speaker', '')
-        try:
-            last_idx = req.characters.index(last_speaker)
-        except ValueError:
-            last_idx = -1
-        next_char = req.characters[(last_idx + 1) % len(req.characters)]
+        if req.mode == "round_robin":
+            last_speaker = req.history[-1].get('speaker', '')
+            try:
+                last_idx = req.characters.index(last_speaker)
+            except ValueError:
+                last_idx = -1
+            next_char = req.characters[(last_idx + 1) % len(req.characters)]
+        else:
+            import random
+            # In random mode, frontend might specify next_char or backend picks one.
+            # We'll just randomly pick a character that isn't the user.
+            next_char = random.choice(req.characters)
 
-    char_obj = next((c for c in CHARACTERS if c['name'] == next_char), None) or {"name": next_char, "system_prompt": "You are a debater."}
+    char_obj = next((c for c in CHARACTERS if c['name'] == next_char), None) or {"name": next_char, "system_prompt": "You are a participant in a group chat."}
     
+    # Replace {{user}} and {user} with actual user_name
+    system_prompt_text = char_obj['system_prompt'].replace("{{user}}", req.user_name).replace("{user}", req.user_name).replace("{{User}}", req.user_name)
+
     rag_context_raw = await get_rag_context(req.topic)
     rag_context = rag_context_raw[:3000] + ("..." if len(rag_context_raw) > 3000 else "")
 
@@ -154,23 +168,32 @@ async def chat(req: ChatRequest):
             logger.error(f"Failed to load news: {e}")
 
     # Build System Prompt
+    group_members = ", ".join(req.characters + [req.user_name])
+    
+    if req.is_personal:
+        setting_context = f"""[System Note: You are currently alone in a physical setting with {req.user_name}. Engage in a face-to-face, immersive roleplay. Describe your physical actions, expressions, and surroundings using asterisks (e.g., *looks at you, sighs softly*). Do not act like you are in a digital chatroom. You are physically close to them.]"""
+    else:
+        setting_context = f"You are in a private group chat. The ONLY people in this chat are: {group_members}."
+
     messages = [
         SystemMessage(content=f"""
 You are roleplaying as {char_obj['name']}.
 Personality/Bio:
-{char_obj['system_prompt']}
+{system_prompt_text}
 
-Debate Topic: {req.topic}
+{setting_context}
+Chat Topic/Context: {req.topic}
 
 {rag_context}
 
 {news_context}
 
-INSTRUCTIONS:
-1. Stay in character AT ALL TIMES.
-2. Respond to the arguments of previous speakers.
-3. If RAG Context or News is provided, use it to support your points.
-4. Keep your response conversational but intellectually rigorous (approx 3-5 sentences).
+CRITICAL INSTRUCTIONS:
+1. You MUST stay strictly in character as {char_obj['name']} AT ALL TIMES. Use their exact tone, mannerisms, and worldview. Do NOT act like a generic AI assistant.
+2. NEVER prefix your response with your name (e.g., do not write "[{char_obj['name']}]:" or "{char_obj['name']}:"). Just output your spoken dialogue directly.
+3. Respond directly to the arguments or casual chatter of previous speakers, addressing them by their names if appropriate. Know that the human user is named {req.user_name}.
+4. Keep your response conversational, casual, and fitting for a messenger group chat (approx 1-4 sentences). Do not write essays.
+5. Do NOT break character to agree blindly; if your character would disagree, flirt, argue, or have a unique perspective, express it passionately!
 """)
     ]
 
@@ -198,7 +221,7 @@ INSTRUCTIONS:
             "speaker": next_char,
             "text": reply_text,
             "timestamp": datetime.now().isoformat(),
-            "character": char_info
+            "character": char_obj
         }
         with open(DATASET_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(turn_data) + "\n")
@@ -211,6 +234,56 @@ INSTRUCTIONS:
         "conversation_id": CONVERSATION_ID
     }
 
+class ExportRequest(BaseModel):
+    topic: str
+    history: List[dict]
+    characters: List[str]
+
+@app.post("/api/export")
+async def export_chat(req: ExportRequest):
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"storage/chat_export_{timestamp}.md"
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"# Chat Export\n\n")
+            f.write(f"**Topic:** {req.topic}\n")
+            f.write(f"**Participants:** {', '.join(req.characters)}\n")
+            f.write(f"**Date:** {timestamp}\n\n")
+            f.write("---\n\n")
+            for msg in req.history:
+                speaker = msg.get('speaker', 'Unknown')
+                text = msg.get('text', '')
+                f.write(f"**[{speaker}]**: {text}\n\n")
+        return {"status": "success", "file": filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SyncSessionRequest(BaseModel):
+    session_id: str
+    topic: str
+    history: List[dict]
+    characters: List[str]
+
+@app.post("/api/sync_session")
+async def sync_session(req: SyncSessionRequest):
+    if not req.session_id:
+        return {"status": "ignored"}
+    
+    filename = f"storage/sessions/{req.session_id}.json"
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump({
+                "session_id": req.session_id,
+                "topic": req.topic,
+                "participants": req.characters,
+                "updated_at": datetime.now().isoformat(),
+                "history": req.history
+            }, f, indent=4)
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Failed to sync session: {e}")
+        return {"status": "error"}
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
@@ -218,6 +291,10 @@ async def index(request: Request):
 @app.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request):
     return templates.TemplateResponse(request=request, name="chat.html")
+
+@app.get("/personal", response_class=HTMLResponse)
+async def personal_page(request: Request):
+    return templates.TemplateResponse(request=request, name="personal.html")
 
 @app.get("/knowledge", response_class=HTMLResponse)
 async def knowledge_page(request: Request):

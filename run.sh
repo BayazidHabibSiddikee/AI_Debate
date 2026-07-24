@@ -34,29 +34,25 @@ stop_simulator() {
 }
 
 start_simulator() {
-    echo "🏹 Starting Nexus Debate Platform..."
+    echo "🏹 Starting Sword Debate Platform..."
     
-    if [ -d "$VENV" ]; then
-        echo "🐍 Activating virtual environment..."
-        source "$VENV/bin/activate"
-    else
-        echo "ℹ️ Virtual environment not found. Falling back to global Python."
-    fi
-    
-    # Run RAG Server
+    echo "🐍 Activating virtual environment..."
+    source "$VENV_DIR/bin/activate" || { echo "Failed to activate venv"; exit 1; }
+
+    # Start RAG Server
     echo "📚 Starting RAG Engine..."
-    nohup python3 rag_server.py --port $RAG_PORT > rag.log 2>&1 &
-    echo $! > "$RAG_PID_FILE"
+    nohup python3 rag_server.py --port "$RAG_PORT" > rag.log 2>&1 &
     
-    # Run Debate App
+    # Start Debate Simulator
     echo "💬 Starting Debate App..."
     nohup python3 app.py > simulator.log 2>&1 &
-    echo $! > "$PID_FILE"
-    
+
+    # Wait and check
     echo "⏳ Waiting for services to ascend..."
-    for i in $(seq 1 15); do
-        if ss -tlnp 2>/dev/null | grep -q ":$DEBATE_PORT"; then
-            echo "✨ Nexus Debate Platform is online!"
+    sleep 3
+    if ps -p $(pgrep -f "python3 rag_server.py") > /dev/null && ps -p $(pgrep -f "python3 app.py") > /dev/null; then
+        if [ "$DEBUG" = false ]; then
+            echo "✨ Sword Debate Platform is online!"
             echo "🌍 Portal:        http://localhost:$DEBATE_PORT"
             echo "📚 RAG Endpoint:  http://localhost:$RAG_PORT"
             echo "------------------------------------------------"

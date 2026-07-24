@@ -1,4 +1,4 @@
-# 🌐 Nexus Debate Simulator (AI_Debate)
+# 🌐 Sword Debate Simulator (AI_Debate)
 
 A unified platform for simulating synthetic character conversations, multi-agent debates, and generating deep research data via RAG (Retrieval-Augmented Generation).
 
@@ -74,6 +74,31 @@ Drop your SillyTavern/TavernAI `.png` character cards into the `images/` directo
 python extract_chunks.py
 ```
 This automatically parses their embedded persona metadata (base64/JSON) and appends it to `characters.json`. No manual typing needed!
+
+**Where to find character cards:**
+You can download `.png` character cards from various community hubs, such as:
+* [Chub.ai](https://chub.ai)
+* [CharacterHub](https://characterhub.org)
+* [JanitorAI](https://janitorai.com) (if they provide exportable Tavern cards)
+
+### Adding Characters Manually
+If you do not have a `.png` card and want to create a character manually, simply open `characters.json` and append a new JSON object to the array:
+```json
+{
+  "name": "My Custom Character",
+  "system_prompt": "You are a custom AI character. You speak politely and know a lot about science.",
+  "image": "images/custom_avatar.png"
+}
+```
+
+---
+
+## ⚙️ Configuration (API Keys & Models)
+
+You can configure your models, API keys, and endpoint links inside `settings.json`:
+* **Models**: Change the default LLM (e.g., `gemma4:31b-cloud`, `llama3`).
+* **API Keys**: Add your keys for OpenAI, Anthropic, Google, etc.
+* **Server**: Update the `ollama_base_url` or `openai_base_url` if you are using an external provider or a different local port.
 
 ---
 

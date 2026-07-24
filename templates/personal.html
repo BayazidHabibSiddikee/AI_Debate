@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Character Debate Simulator</title>
+    <title>Personal AI Chat</title>
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <!-- Icons -->
@@ -191,7 +191,7 @@
             transform: translateX(4px);
         }
         
-        .char-card input[type="checkbox"] {
+        .char-card input[type="radio" name="selected_character"] {
             display: none;
         }
 
@@ -586,7 +586,7 @@
     <div class="sidebar" id="sidebar">
         <div class="brand">
             <i class="ri-blaze-line"></i>
-            <h1>Sword Debate</h1>
+            <h1>Personal Chat</h1>
         </div>
         
         <div class="control-group">
@@ -595,21 +595,15 @@
         </div>
 
         <div class="control-group">
-            <label><i class="ri-chat-1-line"></i> Debate Topic</label>
+            <label><i class="ri-chat-1-line"></i> Chat Topic</label>
             <input type="text" id="topicInput" value="The ethics of AI in creative arts">
         </div>
 
-        <div class="control-group">
-            <label><i class="ri-settings-2-line"></i> Chat Mode</label>
-            <select id="chatMode" style="background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-light); padding: 12px; border-radius: 12px; font-family: inherit; font-size: 0.95rem;">
-                <option value="random">🎲 Random Chaos (Messenger Style)</option>
-                <option value="round_robin">🔄 Round Robin (Strict Turns)</option>
-            </select>
-        </div>
+        
 
         <div class="control-group">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <label><i class="ri-group-line"></i> Participants (Select ≥2)</label>
+                <label><i class="ri-group-line"></i> Partner (Select 1)</label>
                 <button class="btn" style="padding: 4px 8px; font-size: 0.8rem; background: var(--primary-dim); color: var(--primary); border: 1px solid var(--primary);" onclick="document.getElementById('charInput').click()">
                     <i class="ri-upload-2-line"></i> Add Card
                 </button>
@@ -620,13 +614,9 @@
             </div>
         </div>
 
-        <div class="toggle-container">
-            <div class="toggle-label">
-                <i class="ri-robot-line" style="color: var(--primary);"></i>
-                Auto-Play Debate
-            </div>
+        
             <label class="switch">
-                <input type="checkbox" id="autoPlayToggle" onchange="toggleAutoPlay()">
+                <input type="radio" name="selected_character" id="autoPlayToggle" onchange="toggleAutoPlay()">
                 <span class="slider"></span>
             </label>
         </div>
@@ -689,10 +679,10 @@
 
         let chatHistory = [];
         let globalCharacters = [];
-        let isAutoPlaying = false;
-        let autoPlayInterval = null;
+        
+        
         let isGenerating = false;
-        let burstQueue = 0;
+        
         
         async function syncSessionToServer() {
             try {
@@ -711,7 +701,7 @@
                 // Persist locally too
                 localStorage.setItem('debateHistory', JSON.stringify(chatHistory));
                 localStorage.setItem('debateTopic', topic);
-                localStorage.setItem('debateMode', document.getElementById('chatMode').value);
+                
                 localStorage.setItem('debateChars', JSON.stringify(characters));
             } catch (e) {
                 console.error("Sync failed:", e);
@@ -726,8 +716,8 @@
             }
             const savedTopic = localStorage.getItem('debateTopic');
             if (savedTopic) document.getElementById('topicInput').value = savedTopic;
-            const savedMode = localStorage.getItem('debateMode');
-            if (savedMode) document.getElementById('chatMode').value = savedMode;
+            
+            
             
             const savedChars = localStorage.getItem('debateChars');
             if (savedChars) {
@@ -766,7 +756,7 @@
                     
                     const html = `
                     <label class="char-card ${isSelected ? 'selected' : ''}">
-                        <input type="checkbox" value="${char.name}" ${isSelected ? 'checked' : ''} onchange="updateCharCard(this)">
+                        <input type="radio" name="selected_character" value="${char.name}" ${isSelected ? 'checked' : ''} onchange="updateCharCard(this)">
                         <img src="${imgSrc}" class="char-avatar" onerror="this.src='${fallbackImg}'">
                         <div class="char-info">
                             <div class="char-name">${char.name}</div>
@@ -790,7 +780,7 @@
         }
 
         function getSelectedCharacters() {
-            const checkboxes = document.querySelectorAll('.char-card input[type="checkbox"]:checked');
+            const checkboxes = document.querySelectorAll('.char-card input[type="radio" name="selected_character"]:checked');
             return Array.from(checkboxes).map(cb => cb.value);
         }
 
@@ -801,20 +791,7 @@
         }
 
         // Auto-play Logic
-        function toggleAutoPlay() {
-            isAutoPlaying = document.getElementById('autoPlayToggle').checked;
-            const badge = document.getElementById('statusBadge');
-            
-            if (isAutoPlaying) {
-                badge.innerHTML = `<i class="ri-loader-4-line" style="animation: spin 1s linear infinite; color: var(--primary);"></i> Auto-Pilot Active`;
-                badge.style.borderColor = 'var(--primary)';
-                badge.style.color = 'var(--primary)';
-                if (!isGenerating) generateTurn();
-            } else {
-                badge.innerHTML = `<i class="ri-checkbox-blank-circle-fill" style="font-size: 10px;"></i> Idle`;
-                badge.style.borderColor = 'var(--border-light)';
-                badge.style.color = 'var(--text-muted)';
-            }
+        
         }
 
         async function generateTurn() {
@@ -823,16 +800,15 @@
             const topic = document.getElementById('topicInput').value;
             const characters = getSelectedCharacters();
             
-            if (characters.length < 2) {
-                alert("Please select at least 2 characters.");
-                document.getElementById('autoPlayToggle').checked = false;
-                toggleAutoPlay();
+            if (characters.length < 1) {
+                alert("Please select 1 character.");
+                
                 return;
             }
 
             // Determine next speaker on frontend
             let nextCharName = characters[0];
-            const mode = document.getElementById('chatMode').value;
+            const mode = 'round_robin';
             const userName = document.getElementById('userNameInput').value || "User";
 
             // Mention Checking
@@ -886,7 +862,8 @@
                         history: chatHistory,
                         user_name: userName,
                         mode: mode,
-                        forced_speaker: nextCharName
+                        forced_speaker: nextCharName,
+                        is_personal: true
                     })
                 });
 
@@ -901,23 +878,14 @@
             } catch (error) {
                 console.error("Error:", error);
                 appendMessage("System", "Failed to connect to LLM endpoint or endpoint error.");
-                document.getElementById('autoPlayToggle').checked = false;
-                toggleAutoPlay();
+                
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = `<i class="ri-flashlight-fill"></i> Next Turn`;
                 typing.classList.remove('active');
                 isGenerating = false;
                 
-                if (burstQueue > 0) {
-                    burstQueue--;
-                    setTimeout(() => { generateTurn(); }, 1000);
-                } else if (isAutoPlaying) {
-                    // Schedule next turn with slight natural delay
-                    setTimeout(() => {
-                        if (isAutoPlaying) generateTurn();
-                    }, 2000);
-                }
+                
             }
         }
 
@@ -940,14 +908,7 @@
             updateHeaderMeta();
             syncSessionToServer();
 
-            const mode = document.getElementById('chatMode').value;
-            if (mode === 'random') {
-                // Roll 1 to 4 responses
-                burstQueue = Math.floor(Math.random() * 4) + 1;
-                generateTurn();
-            } else {
-                generateTurn();
-            }
+            generateTurn();
         }
 
         function appendMessage(speaker, text) {
@@ -1005,8 +966,7 @@
         function clearChat() {
             chatHistory = [];
             document.getElementById('chatLog').innerHTML = '';
-            document.getElementById('autoPlayToggle').checked = false;
-            toggleAutoPlay();
+            
             updateHeaderMeta();
             
             // Create a new session so old messages aren't overridden but kept for training
